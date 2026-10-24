@@ -132,8 +132,29 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
+    private var menuTimer: Timer?
+
     func menuWillOpen(_ menu: NSMenu) {
         refreshMenuStates()
+        startMenuTimer()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        stopMenuTimer()
+    }
+
+    private func startMenuTimer() {
+        stopMenuTimer()
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.refreshMenuStates()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        menuTimer = timer
+    }
+
+    private func stopMenuTimer() {
+        menuTimer?.invalidate()
+        menuTimer = nil
     }
 
     private func buildMenu() {
