@@ -2,7 +2,11 @@
 
 **Traffic Reloader** is a native, ultra-lightweight macOS menu bar utility that autonomously monitors your mobile data quota and activates free **+2 GB Highspeed Data Snacks** on **Drillisch Servicewelt** mobile plans (such as **SIM24**, **sim.de**, **handyvertrag.de**, **winsim.de**, and others).
 
-Built 100% in pure **Swift** with **zero external dependencies** and **no headless browser overhead** (no Chrome, no Puppeteer, no Python). It runs quietly in the system menu bar, consuming only **~15 MB RAM** and an app bundle of just **~360 KB**.
+Built 100% in pure **Swift** with **zero external dependencies** and **no headless browser overhead** (no Chrome, no Puppeteer, no Python). It runs quietly in the system menu bar, consuming only **~15 MB RAM** and an app bundle of just **~440 KB**.
+
+[![Download DMG](https://img.shields.io/badge/Download-TrafficReloader.dmg-blue?style=for-the-badge&logo=apple)](https://github.com/alex-kassel/mac-traffic-reloader/releases/latest/download/TrafficReloader.dmg)
+[![macOS](https://img.shields.io/badge/macOS-13.0+-black?style=for-the-badge&logo=apple)](https://github.com/alex-kassel/mac-traffic-reloader)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 ---
 
@@ -26,26 +30,35 @@ All mobile providers operated by **Drillisch Online GmbH (1&1 Group)** share the
 
 ## Key Features
 
-1. **One-Click Active / Pause Toggle in Menu Bar**:
-   - Easily enable or pause automatic checks directly from the menu bar (`● Active`).
-   - Perfect if you are running a server-side cron script or temporarily want to prevent local requests without quitting the app.
+1. **Clean High-Contrast Menu Bar & Live Ticking Countdown**:
+   - Clean, native 2-line header showing current quota and live status.
+   - Live 1-second countdown (`Active • Next scan in 04:30`) ticks smoothly even while the menu is open, powered by `RunLoop.Mode.common`.
    - The menu bar icon changes dynamically:
-     - `📶` (Active, monitoring in background)
-     - `⏸` (Paused / Deactivated)
-     - `↻` (Actively checking or booking +2 GB)
-2. **Autonomous HTTP Lifecycle (Zero Browser Overhead)**:
+     - `antenna.radiowaves.left.and.right` (Active, monitoring in background)
+     - `antenna.radiowaves.left.and.right.slash` (Paused / Deactivated)
+     - `↻ 2GB` (Actively checking or booking +2 GB)
+2. **Dedicated "Usage & Statistics..." Modal Window (`Cmd+S`)**:
+   - Opens a dedicated, clean native window displaying:
+     - Full data quota (`395,54 GB von 398,00 GB`)
+     - Active data snacks breakdown (`174x 2,00 GB Data Snack Unlimited`)
+     - Exact timestamp and server response of the last check
+     - Real-time countdown to the next scan
+     - One-click *«Check & Reload Now»* action button
+3. **Autonomous HTTP Lifecycle (Zero Browser Overhead)**:
    - Authenticates via lightweight HTTP POST with session cookie management and CSRF tokens.
-   - Inspects `/start` for the *«Datenvolumen nachbuchen»* button. If sufficient quota is available, it sleeps until the next interval without making unnecessary booking calls.
-   - If traffic is low, requests the booking modal and submits service activation.
-3. **Automated Captcha Solving via 2Captcha**:
+   - Inspects `/mytariff/invoice/showGprsDataUsage` directly. If sufficient quota is available, it sleeps until the next interval without making unnecessary booking calls.
+   - If traffic is low and the *«Datenvolumen nachbuchen»* button is active, requests the booking modal, solves any image captcha via 2Captcha API, and activates the +2 GB data snack.
+4. **Automated Captcha Solving via 2Captcha**:
    - If Servicewelt presents an image captcha during booking, the image is automatically extracted, sent to the 2Captcha API, solved, and injected into the form.
-4. **Native macOS Preferences Window**:
+5. **Native macOS Preferences Window & Keychain Integration**:
    - Configure username, password, 2Captcha key, provider, and check interval (5, 10, 15, 30, 60 minutes).
+   - Securely save credentials to Apple Keychain with Touch ID quick-fill support.
    - Built-in **"Check Balance"** button to view your remaining 2Captcha balance in real-time.
-5. **System Notifications & Live Status**:
-   - Menu bar displays your current data usage (e.g. `Quota: 333,21 GB von 334,00 GB (142 snacks)`).
-   - Sends native macOS Notification Center alerts when +2 GB is successfully activated.
-6. **Native Login Item**:
+6. **Expressive Logging with Visual Banners & 2 MB Rotation**:
+   - Major events (like successful +2 GB booking) are framed with distinct `*** [RELOAD SUCCESS] ***` banners.
+   - Automatic 2 MB rotation (`trafficreloader.log` -> `trafficreloader.log.1`).
+   - Direct access via the **Open Log File** menu bar item.
+7. **Native Login Item**:
    - One-click *«Launch at Login»* via macOS 13+ `SMAppService` (clean system integration, no deprecated launch daemons).
 
 ---
