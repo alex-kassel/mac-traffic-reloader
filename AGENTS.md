@@ -37,8 +37,10 @@ Autonomous Drillisch Servicewelt data snack (+2 GB) auto-reloader for macOS.
    - Distinct, prominent banners for `*** [RELOAD SUCCESS: +2 GB DATA SNACK BOOKED!] ***`, idle checks, and errors.
    - Menu bar item **«Open Log File»**.
 
-8. **Documentation Maintenance (`README.md` & `AGENTS.md`)**:
-   - Any new feature, preference, or architectural change MUST immediately be documented in `README.md` and this localized `AGENTS.md`. Never let documentation fall out of sync with code.
+8. **Documentation & Release Policy**:
+   - `README.md` is for humans/users; `AGENTS.md` is for agent development architecture. Avoid duplicate content.
+   - Pushes to GitHub are allowed after cohesive milestones.
+   - **Never create GitHub releases without asking the user first**.
 
 ---
 
