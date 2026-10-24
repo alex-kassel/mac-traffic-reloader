@@ -130,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarControllerDeleg
     }
 
     func menuBarDidRequestReload() {
+        Logger.log("[AppDelegate] Manual reload requested by user. Triggering traffic check...")
         ReloaderEngine.shared.triggerReload(isManual: true)
     }
 
