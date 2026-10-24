@@ -1,0 +1,75 @@
+import Foundation
+
+final class Logger {
+    static let shared = Logger()
+    private let logFileURL: URL
+    private let backupFileURL: URL
+    private var fileHandle: FileHandle?
+    private let dateFormatter: DateFormatter
+    private let queue = DispatchQueue(label: "com.fcc.trafficreloader.logger", qos: .utility)
+    private let maxLogSizeBytes: UInt64 = 2 * 1024 * 1024 // 2 MB limit
+
+    private init() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let dir = home.appendingPathComponent(".trafficreloader", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        self.logFileURL = dir.appendingPathComponent("trafficreloader.log")
+        self.backupFileURL = dir.appendingPathComponent("trafficreloader.log.1")
+
+        self.dateFormatter = DateFormatter()
+        self.dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+
+        openHandle()
+    }
+
+    var logPath: String {
+        return logFileURL.path
+    }
+
+    private func openHandle() {
+        if !FileManager.default.fileExists(atPath: logFileURL.path) {
+            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+        }
+        self.fileHandle = try? FileHandle(forWritingTo: logFileURL)
+        self.fileHandle?.seekToEndOfFile()
+    }
+
+    static func log(_ message: String, _ args: CVarArg...) {
+        let formatted = String(format: message, arguments: args)
+        shared.write(formatted)
+    }
+
+    private func write(_ message: String) {
+        let timestamp = dateFormatter.string(from: Date())
+        let line = "[\(timestamp)] \(message)\n"
+        NSLog("%@", message)
+
+        queue.async { [weak self] in
+            guard let self = self else { return }
+
+            self.rotateIfNeeded()
+
+            guard let handle = self.fileHandle, let data = line.data(using: .utf8) else { return }
+            handle.write(data)
+        }
+    }
+
+    private func rotateIfNeeded() {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: logFileURL.path)
+        let size = (attrs?[.size] as? UInt64) ?? 0
+
+        if size >= maxLogSizeBytes {
+            try? fileHandle?.close()
+            fileHandle = nil
+
+            try? FileManager.default.removeItem(at: backupFileURL)
+            try? FileManager.default.moveItem(at: logFileURL, to: backupFileURL)
+
+            openHandle()
+            if let handle = fileHandle, let notice = "[\(dateFormatter.string(from: Date()))] [Logger] Log rotated (exceeded 2MB limit).\n".data(using: .utf8) {
+                handle.write(notice)
+            }
+        }
+    }
+}
