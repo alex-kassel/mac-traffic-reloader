@@ -8,16 +8,15 @@ enum ServiceweltStatus {
 }
 
 final class ServiceweltClient {
-    private let cookieJar = HTTPCookieStorage()
     private var session: URLSession!
     private let twoCaptcha = TwoCaptchaClient()
 
     private let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
 
     init() {
-        let config = URLSessionConfiguration.ephemeral
-        config.httpCookieStorage = cookieJar
+        let config = URLSessionConfiguration.default
         config.httpShouldSetCookies = true
+        config.httpCookieAcceptPolicy = .always
         config.timeoutIntervalForRequest = 35.0
         self.session = URLSession(configuration: config)
     }
@@ -36,31 +35,27 @@ final class ServiceweltClient {
                 return .failed(message: "Login failed. Please check your username and password.")
             }
 
-            // Step 2: Check /start for 'Datenvolumen nachbuchen'
-            let startHtml = try await httpGet(url: "\(baseUrl)/start")
-            let hasButton = startHtml.contains("Datenvolumen nachbuchen")
-
-            if !hasButton {
-                // Try reading quota from usage page anyway to update display
-                let quotaSummary = try? await readQuotaSummary(baseUrl: baseUrl)
-                return .notNeeded(quota: quotaSummary, message: "No 'Datenvolumen nachbuchen' button found. Sufficient traffic available.")
-            }
-
-            // Step 3: Fetch Data Usage Page
+            // Step 2: Fetch Data Usage Page directly (inspecting real booking button state)
+            Logger.log("[ServiceweltClient] Loading data usage page (/mytariff/invoice/showGprsDataUsage)...")
             let usageHtml = try await httpGet(url: "\(baseUrl)/mytariff/invoice/showGprsDataUsage")
             let quotaBefore = extractQuotaSummary(from: usageHtml)
             let buchenState = extractBuchenState(from: usageHtml)
 
+            Logger.log("[ServiceweltClient] Usage inspected: Quota='%@', FormExists=%@, Disabled=%@",
+                       quotaBefore ?? "unknown",
+                       buchenState.exists ? "YES" : "NO",
+                       buchenState.disabled ? "YES" : "NO")
+
             if !buchenState.exists {
-                return .notNeeded(quota: quotaBefore, message: "Booking form not found on data usage page.")
+                return .notNeeded(quota: quotaBefore, message: "Extra data snack not available currently (no booking form).")
             }
 
             if buchenState.disabled {
                 return .buttonInactive(quota: quotaBefore, message: "'Buchen' button is currently disabled. Will retry later.")
             }
 
-            // Step 4: Request Modal via AJAX
-            Logger.log("[ServiceweltClient] Requesting booking modal via AJAX...")
+            // Step 3: Request Modal via AJAX
+            Logger.log("[ServiceweltClient] 'Buchen' button is ACTIVE! Requesting modal via AJAX...")
             let modalHtml = try await httpPostForm(
                 url: "\(baseUrl)/mytariff/invoice/getChangeServiceInfo",
                 params: buchenState.inputs,
@@ -155,11 +150,12 @@ final class ServiceweltClient {
         let startHtml = try await httpGet(url: "\(baseUrl)/start")
         let lower = startHtml.lowercased()
 
-        if lower.contains("servicewelt") || lower.contains("startseite") || lower.contains("datenvolumen") {
-            Logger.log("[ServiceweltClient] Authentication successful for user: %@", username)
+        if !lower.contains("userlogintype") || lower.contains("logout") || lower.contains("abmelden") {
+            Logger.log("[ServiceweltClient] Authentication verified successfully for user: %@", username)
             return true
         }
 
+        Logger.log("[ServiceweltClient] Authentication failed! Check username or password.")
         return false
     }
 
@@ -171,16 +167,36 @@ final class ServiceweltClient {
     // MARK: - HTML Extraction Helpers
 
     private func extractQuotaSummary(from html: String) -> String? {
-        let quota = matchRegex(pattern: "\\d+[,.]\\d+\\s*GB\\s*von\\s*\\d+[,.]\\d+\\s*GB[^\n<]*", in: html)
-        let snack = matchRegex(pattern: "davon\\s*\\d+\\s*x\\s*2[,.]00\\s*GB[^\n)<]*", in: html)
-
-        if let q = quota {
-            var result = q.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let s = snack {
-                result += " (\(s.trimmingCharacters(in: .whitespacesAndNewlines)))"
+        // Pattern A: Standard single-line "333,21 GB von 332,00 GB verbraucht"
+        if let direct = matchRegex(pattern: "\\d+[,.]\\d+\\s*GB\\s*von\\s*\\d+[,.]\\d+\\s*GB[^\n<]*", in: html) {
+            var res = direct.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let snack = matchRegex(pattern: "davon\\s*\\d+\\s*x\\s*2[,.]00\\s*GB[^\n)<]*", in: html) {
+                res += " (\(snack.trimmingCharacters(in: .whitespacesAndNewlines)))"
             }
-            return result
+            return res
         }
+
+        // Pattern B: Multi-line / span structured (current SIM24):
+        // <span class="...font-weight-bold"> 487,49 GB</span> ... <span>von 458,00 GB verbraucht</span>
+        let num1 = matchRegexGroup(pattern: "(\\d+[,.]\\d+\\s*GB)\\s*</span>[\\s\\S]*?von\\s*(\\d+[,.]\\d+\\s*GB)\\s*verbraucht", in: html, group: 1)
+        let num2 = matchRegexGroup(pattern: "(\\d+[,.]\\d+\\s*GB)\\s*</span>[\\s\\S]*?von\\s*(\\d+[,.]\\d+\\s*GB)\\s*verbraucht", in: html, group: 2)
+        if let n1 = num1, let n2 = num2 {
+            var res = "\(n1.trimmingCharacters(in: .whitespacesAndNewlines)) von \(n2.trimmingCharacters(in: .whitespacesAndNewlines)) verbraucht"
+            if let snack = matchRegex(pattern: "davon\\s*\\d+\\s*x\\s*2[,.]00\\s*GB[^\n)<]*", in: html) {
+                res += " (\(snack.trimmingCharacters(in: .whitespacesAndNewlines)))"
+            }
+            return res
+        }
+
+        // Pattern C: Fallback to any "von ... GB verbraucht"
+        if let vonMatch = matchRegex(pattern: "von\\s*\\d+[,.]\\d+\\s*GB\\s*verbraucht", in: html) {
+            var res = vonMatch.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let snack = matchRegex(pattern: "davon\\s*\\d+\\s*x\\s*2[,.]00\\s*GB[^\n)<]*", in: html) {
+                res += " (\(snack.trimmingCharacters(in: .whitespacesAndNewlines)))"
+            }
+            return res
+        }
+
         return nil
     }
 
@@ -295,9 +311,12 @@ final class ServiceweltClient {
             req.setValue(v, forHTTPHeaderField: k)
         }
 
+        let keyAllowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~[]")
+        let valAllowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.~")
+
         let bodyString = params.compactMap { key, value -> String? in
-            guard let encKey = key.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
-                  let encVal = value.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return nil }
+            guard let encKey = key.addingPercentEncoding(withAllowedCharacters: keyAllowed),
+                  let encVal = value.addingPercentEncoding(withAllowedCharacters: valAllowed) else { return nil }
             return "\(encKey)=\(encVal)"
         }.joined(separator: "&")
 

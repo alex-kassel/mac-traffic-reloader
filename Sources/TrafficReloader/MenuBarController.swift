@@ -8,15 +8,97 @@ protocol MenuBarControllerDelegate: AnyObject {
     func menuBarDidRequestQuit()
 }
 
+final class MenuBarHeaderView: NSView {
+    private let titleLabel = NSTextField(labelWithString: "📊 Quota: Syncing...")
+    private let snackLabel = NSTextField(labelWithString: "")
+    private let timeLabel = NSTextField(labelWithString: "Checked: Never")
+    private let statusLabel = NSTextField(labelWithString: "Status: Ready")
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: 82))
+        setupUI()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupUI()
+    }
+
+    private func setupUI() {
+        wantsLayer = true
+
+        // 1. Title / Quota (bright, bold, 100% readable)
+        titleLabel.frame = NSRect(x: 16, y: 58, width: 268, height: 18)
+        titleLabel.font = NSFont.systemFont(ofSize: 13.0, weight: .bold)
+        titleLabel.textColor = .labelColor
+        addSubview(titleLabel)
+
+        // 2. Data Snack subline (high contrast accent)
+        snackLabel.frame = NSRect(x: 16, y: 39, width: 268, height: 16)
+        snackLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
+        snackLabel.textColor = .systemGreen
+        addSubview(snackLabel)
+
+        // 3. Last Check & Countdown (clear secondary)
+        timeLabel.frame = NSRect(x: 16, y: 21, width: 268, height: 15)
+        timeLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11.0, weight: .regular)
+        timeLabel.textColor = .secondaryLabelColor
+        addSubview(timeLabel)
+
+        // 4. Status description
+        statusLabel.frame = NSRect(x: 16, y: 5, width: 268, height: 14)
+        statusLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .regular)
+        statusLabel.textColor = .secondaryLabelColor
+        addSubview(statusLabel)
+    }
+
+    func update(quota: String?, lastCheck: Date?, intervalMinutes: Int, status: String?) {
+        if let q = quota, !q.isEmpty {
+            if let openParen = q.range(of: " (davon ") {
+                let mainPart = String(q[..<openParen.lowerBound])
+                let snackPart = String(q[openParen.lowerBound...])
+                    .trimmingCharacters(in: CharacterSet(charactersIn: " ()"))
+                titleLabel.stringValue = "📊 \(mainPart)"
+                snackLabel.stringValue = "⚡ \(snackPart)"
+                snackLabel.isHidden = false
+            } else {
+                titleLabel.stringValue = "📊 \(q)"
+                snackLabel.isHidden = true
+            }
+        } else {
+            titleLabel.stringValue = "📊 Quota: Not synced yet"
+            snackLabel.isHidden = true
+        }
+
+        if let date = lastCheck {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm:ss"
+            let elapsed = Int(Date().timeIntervalSince(date))
+            let total = intervalMinutes * 60
+            let remaining = max(0, total - elapsed)
+            let remMin = remaining / 60
+            let remSec = remaining % 60
+            timeLabel.stringValue = String(format: "Checked: %@ • Next in %02d:%02d", formatter.string(from: date), remMin, remSec)
+        } else {
+            timeLabel.stringValue = "Checked: Never"
+        }
+
+        if let s = status, !s.isEmpty {
+            let short = s.count > 42 ? String(s.prefix(42)) + "..." : s
+            statusLabel.stringValue = "Status: \(short)"
+        } else {
+            statusLabel.stringValue = "Status: Idle"
+        }
+    }
+}
+
 final class MenuBarController: NSObject, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let menu = NSMenu()
     weak var delegate: MenuBarControllerDelegate?
 
+    private var headerView: MenuBarHeaderView!
     private var activeMenuItem: NSMenuItem!
-    private var quotaMenuItem: NSMenuItem!
-    private var lastCheckMenuItem: NSMenuItem!
-    private var lastStatusMenuItem: NSMenuItem!
     private var launchAtLoginItem: NSMenuItem!
     private var intervalSubmenu: NSMenu!
     private var providerSubmenu: NSMenu!
@@ -68,22 +150,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private func buildMenu() {
         menu.removeAllItems()
 
-        // 1. Quota Summary
-        quotaMenuItem = NSMenuItem(title: "Quota: Checking...", action: nil, keyEquivalent: "")
-        quotaMenuItem.isEnabled = false
-        menu.addItem(quotaMenuItem)
-
-        lastCheckMenuItem = NSMenuItem(title: "Last Check: Never", action: nil, keyEquivalent: "")
-        lastCheckMenuItem.isEnabled = false
-        menu.addItem(lastCheckMenuItem)
-
-        lastStatusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
-        lastStatusMenuItem.isEnabled = false
-        menu.addItem(lastStatusMenuItem)
+        // 1. High-Contrast Custom Header View (Bright, bold, readable)
+        headerView = MenuBarHeaderView()
+        let headerItem = NSMenuItem()
+        headerItem.view = headerView
+        menu.addItem(headerItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        // 2. ACTIVE TOGGLE (Main user requirement)
+        // 2. ACTIVE TOGGLE
         activeMenuItem = NSMenuItem(title: "Active (Auto-Reload)", action: #selector(toggleActive), keyEquivalent: "a")
         activeMenuItem.target = self
         menu.addItem(activeMenuItem)
@@ -149,37 +224,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     func refreshMenuStates() {
         let config = ConfigManager.shared.config
 
+        // Update High-Contrast Header View
+        headerView?.update(
+            quota: config.lastQuotaSummary,
+            lastCheck: config.lastCheckDate,
+            intervalMinutes: config.checkIntervalMinutes,
+            status: config.lastStatus
+        )
+
         // Active State
         activeMenuItem.state = config.active ? .on : .off
-
-        // Quota
-        if let quota = config.lastQuotaSummary, !quota.isEmpty {
-            quotaMenuItem.title = "Quota: \(quota)"
-        } else {
-            quotaMenuItem.title = "Quota: Not synced yet"
-        }
-
-        // Last Check Time & Next Check
-        if let date = config.lastCheckDate {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm:ss"
-            let elapsed = Int(Date().timeIntervalSince(date))
-            let total = config.checkIntervalMinutes * 60
-            let remaining = max(0, total - elapsed)
-            let remMin = remaining / 60
-            let remSec = remaining % 60
-            lastCheckMenuItem.title = String(format: "Last Check: %@ (Next in %02d:%02d)", formatter.string(from: date), remMin, remSec)
-        } else {
-            lastCheckMenuItem.title = "Last Check: Never"
-        }
-
-        // Last Status
-        if let status = config.lastStatus, !status.isEmpty {
-            let short = status.count > 45 ? String(status.prefix(45)) + "..." : status
-            lastStatusMenuItem.title = "Status: \(short)"
-        } else {
-            lastStatusMenuItem.title = "Status: Ready"
-        }
 
         // Interval checks
         for item in intervalSubmenu.items {

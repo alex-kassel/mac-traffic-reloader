@@ -17,7 +17,7 @@ final class PreferencesWindowController: NSWindowController {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 410),
+            contentRect: NSRect(x: 0, y: 0, width: 490, height: 410),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -131,16 +131,16 @@ final class PreferencesWindowController: NSWindowController {
         contentView.addSubview(intervalPopUp)
 
         // 7. Apple Keychain Save Checkbox
-        y -= 30
-        keychainCheckBox = NSButton(checkboxWithTitle: "Save passwords securely to Apple Keychain", target: nil, action: nil)
-        keychainCheckBox.frame = NSRect(x: fieldX, y: y, width: 280, height: 20)
+        y -= 32
+        keychainCheckBox = NSButton(checkboxWithTitle: "Save password to Apple Keychain", target: nil, action: nil)
+        keychainCheckBox.frame = NSRect(x: fieldX, y: y, width: 310, height: 22)
         keychainCheckBox.state = .on
         contentView.addSubview(keychainCheckBox)
 
         // 8. Notifications
         y -= 26
-        notifyCheckBox = NSButton(checkboxWithTitle: "Send notification upon successful reload", target: nil, action: nil)
-        notifyCheckBox.frame = NSRect(x: fieldX, y: y, width: 280, height: 20)
+        notifyCheckBox = NSButton(checkboxWithTitle: "Show notifications on reload (+2 GB)", target: nil, action: nil)
+        notifyCheckBox.frame = NSRect(x: fieldX, y: y, width: 310, height: 22)
         contentView.addSubview(notifyCheckBox)
 
         // Bottom Save button
