@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarControllerDeleg
 
         Logger.log("[AppDelegate] Starting Traffic Reloader...")
 
+        // Setup standard Edit menu so Cmd+C / Cmd+V / Cmd+A work in accessory app text fields
+        setupMainMenu()
+
         menuBarController = MenuBarController()
         menuBarController.delegate = self
 
@@ -101,5 +104,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarControllerDeleg
 
     func engineDidFinishCycle(status: ServiceweltStatus) {
         menuBarController.refreshMenuStates()
+    }
+
+    // MARK: - Standard Edit Menu for Cut/Copy/Paste/SelectAll in Accessory Apps
+
+    private func setupMainMenu() {
+        let mainMenu = NSMenu()
+
+        // 1. App menu
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About Traffic Reloader", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(withTitle: "Quit Traffic Reloader", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        // 2. Edit menu (Crucial for Cmd+C, Cmd+V, Cmd+X, Cmd+A in accessory apps)
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redoItem = editMenu.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(NSMenuItem.separator())
+
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        NSApp.mainMenu = mainMenu
     }
 }
