@@ -92,7 +92,7 @@ final class ReloaderEngine {
             )
         }
 
-        // Output cycle summary and end scan banner
-        Logger.endScan(status: statusStr)
+        // Output cycle summary and visually expressive end scan banner
+        Logger.endScan(status: status)
     }
 }

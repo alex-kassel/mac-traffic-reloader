@@ -36,15 +36,13 @@ final class ServiceweltClient {
             }
 
             // Step 2: Fetch Data Usage Page directly (inspecting real booking button state)
-            Logger.log("[ServiceweltClient] Loading data usage page (/mytariff/invoice/showGprsDataUsage)...")
             let usageHtml = try await httpGet(url: "\(baseUrl)/mytariff/invoice/showGprsDataUsage")
             let quotaBefore = extractQuotaSummary(from: usageHtml)
             let buchenState = extractBuchenState(from: usageHtml)
 
-            Logger.log("[ServiceweltClient] Usage inspected: Quota='%@', FormExists=%@, Disabled=%@",
-                       quotaBefore ?? "unknown",
-                       buchenState.exists ? "YES" : "NO",
-                       buchenState.disabled ? "YES" : "NO")
+            let buttonStatus = buchenState.disabled ? "DISABLED (quota threshold not reached)" : (buchenState.exists ? "ACTIVE (ready to book!)" : "NOT FOUND")
+            Logger.log("[Usage] Quota: '%@'", quotaBefore ?? "unknown")
+            Logger.log("[Usage] 'Buchen' status: %@", buttonStatus)
 
             if !buchenState.exists {
                 return .notNeeded(quota: quotaBefore, message: "Extra data snack not available currently (no booking form).")

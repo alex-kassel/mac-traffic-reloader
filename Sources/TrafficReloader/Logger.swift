@@ -51,14 +51,56 @@ final class Logger {
     /// Outputs an empty line preceding every new scan and prints a prominent scan start banner
     static func startScan(url: String, isManual: Bool = false) {
         writeRaw("\n")
+        log("--------------------------------------------------------------------------------")
         let trigger = isManual ? "Manual Request" : "Scheduled Timer"
-        log("==================== [START SCAN: %@ (%@)] ====================", url, trigger)
+        log(">>> [SCAN START] Provider: %@ (%@)", url, trigger)
     }
 
-    /// Prints a prominent scan finish banner
-    static func endScan(status: String) {
-        log("[ReloaderEngine] Cycle finished: %@", status)
-        log("==================== [END SCAN] ====================")
+    /// Prints a visually expressive result banner based on the outcome of the scan
+    static func endScan(status: ServiceweltStatus) {
+        switch status {
+        case .success(let before, let after, let captchaSolved, let msg):
+            writeRaw("\n")
+            log("********************************************************************************")
+            log("*** [RELOAD SUCCESS: +2 GB DATA SNACK BOOKED!] ********************************")
+            log("********************************************************************************")
+            if let b = before, let a = after {
+                log("* Quota Before: %@", b)
+                log("* Quota After:  %@", a)
+            } else if let a = after ?? before {
+                log("* Quota:        %@", a)
+            }
+            log("* Captcha:      %@", captchaSolved ? "Solved successfully via 2Captcha" : "Not required")
+            log("* Server Note:  %@", msg)
+            log("********************************************************************************\n")
+
+        case .buttonInactive(let quota, _):
+            log("--------------------------------------------------------------------------------")
+            log("<<< [SCAN RESULT: IDLE - NO RELOAD NEEDED]")
+            if let q = quota {
+                log("* Quota:        %@", q)
+            }
+            log("* Reason:       'Buchen' button is disabled (quota threshold not reached yet)")
+            log("--------------------------------------------------------------------------------")
+
+        case .notNeeded(let quota, let msg):
+            log("--------------------------------------------------------------------------------")
+            log("<<< [SCAN RESULT: IDLE - NOT NEEDED]")
+            if let q = quota {
+                log("* Quota:        %@", q)
+            }
+            log("* Reason:       %@", msg)
+            log("--------------------------------------------------------------------------------")
+
+        case .failed(let msg):
+            writeRaw("\n")
+            log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            log("!!! [SCAN FAILED: ERROR OCCURRED] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            log("! Error:        %@", msg)
+            log("! Action:       Will retry on next scheduled interval")
+            log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n")
+        }
     }
 
     private func write(_ message: String) {
