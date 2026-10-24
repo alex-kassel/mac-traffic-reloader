@@ -22,6 +22,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarControllerDeleg
 
         ReloaderEngine.shared.delegate = self
 
+        // Listen for settings saved event from Preferences
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(settingsSaved),
+            name: NSNotification.Name("TrafficReloaderSettingsSaved"),
+            object: nil
+        )
+
         // Initial permissions request for notifications
         NotificationManager.shared.requestAuthorization()
 
@@ -85,6 +93,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarControllerDeleg
             ReloaderEngine.shared.triggerReload()
             restartTimer()
         }
+    }
+
+    func menuBarDidChangeInterval(_ minutes: Int) {
+        Logger.log("[AppDelegate] Check interval changed to %ld minutes. Restarting timer and checking now...", minutes)
+        restartTimer()
+        ReloaderEngine.shared.triggerReload(isManual: true)
+    }
+
+    @objc private func settingsSaved() {
+        Logger.log("[AppDelegate] Settings saved event received. Restarting timer and triggering immediate sync...")
+        restartTimer()
+        ReloaderEngine.shared.triggerReload(isManual: true)
     }
 
     func menuBarDidRequestReload() {

@@ -53,11 +53,22 @@ final class ConfigManager {
     }
 
     private static func load(from url: URL) -> AppConfig {
-        guard let data = try? Data(contentsOf: url),
-              let loaded = try? JSONDecoder().decode(AppConfig.self, from: data) else {
+        guard let data = try? Data(contentsOf: url) else {
             return AppConfig()
         }
-        return loaded
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let loaded = try? decoder.decode(AppConfig.self, from: data) {
+            return loaded
+        }
+
+        // Fallback for non-iso8601 date formats
+        if let fallback = try? JSONDecoder().decode(AppConfig.self, from: data) {
+            return fallback
+        }
+
+        return AppConfig()
     }
 
     func save() {

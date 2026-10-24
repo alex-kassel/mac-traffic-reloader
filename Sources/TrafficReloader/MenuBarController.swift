@@ -3,6 +3,7 @@ import AppKit
 
 protocol MenuBarControllerDelegate: AnyObject {
     func menuBarDidChangeActive(_ active: Bool)
+    func menuBarDidChangeInterval(_ minutes: Int)
     func menuBarDidRequestReload()
     func menuBarDidRequestQuit()
 }
@@ -218,6 +219,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         ConfigManager.shared.update(checkIntervalMinutes: minutes)
         Logger.log("[MenuBar] Selected interval: %ld minutes", minutes)
         refreshMenuStates()
+        delegate?.menuBarDidChangeInterval(minutes)
     }
 
     @objc private func toggleLaunchAtLogin() {

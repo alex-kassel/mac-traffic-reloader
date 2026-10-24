@@ -8,14 +8,16 @@ final class PreferencesWindowController: NSWindowController {
     private var customHostField: NSTextField!
     private var usernameField: NSTextField!
     private var passwordField: NSSecureTextField!
+    private var touchIdBtn: NSButton!
     private var captchaKeyField: NSSecureTextField!
     private var balanceLabel: NSTextField!
     private var intervalPopUp: NSPopUpButton!
     private var notifyCheckBox: NSButton!
+    private var keychainCheckBox: NSButton!
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 440, height: 380),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 410),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -34,10 +36,10 @@ final class PreferencesWindowController: NSWindowController {
         contentView.autoresizingMask = [.width, .height]
         window.contentView = contentView
 
-        var y: CGFloat = 330.0
-        let labelX: CGFloat = 24.0
+        var y: CGFloat = 360.0
+        let labelX: CGFloat = 20.0
         let fieldX: CGFloat = 160.0
-        let fieldWidth: CGFloat = 250.0
+        let fieldWidth: CGFloat = 270.0
 
         // 1. Provider
         let providerLabel = createLabel(text: "Servicewelt Provider:", x: labelX, y: y)
@@ -60,20 +62,41 @@ final class PreferencesWindowController: NSWindowController {
         customHostField.placeholderString = "https://service.example.de"
         contentView.addSubview(customHostField)
 
-        // 3. Username
+        // 3. Username with Apple AutoFill support
         y -= 36
         let userLabel = createLabel(text: "Username / Phone:", x: labelX, y: y)
         contentView.addSubview(userLabel)
         usernameField = NSTextField(frame: NSRect(x: fieldX, y: y - 2, width: fieldWidth, height: 22))
         usernameField.placeholderString = "01511234567 or username"
+        if #available(macOS 11.0, *) {
+            usernameField.contentType = .username
+        }
         contentView.addSubview(usernameField)
 
-        // 4. Password
+        // 4. Password with Apple AutoFill & Touch ID Button
         y -= 36
         let pwdLabel = createLabel(text: "Servicewelt Password:", x: labelX, y: y)
         contentView.addSubview(pwdLabel)
-        passwordField = NSSecureTextField(frame: NSRect(x: fieldX, y: y - 2, width: fieldWidth, height: 22))
+
+        let pwdFieldWidth: CGFloat = 185.0
+        passwordField = NSSecureTextField(frame: NSRect(x: fieldX, y: y - 2, width: pwdFieldWidth, height: 22))
+        if #available(macOS 11.0, *) {
+            passwordField.contentType = .password
+        }
         contentView.addSubview(passwordField)
+
+        // Touch ID button
+        touchIdBtn = NSButton(title: "Touch ID", target: self, action: #selector(touchIdClicked))
+        touchIdBtn.frame = NSRect(x: fieldX + pwdFieldWidth + 6, y: y - 4, width: 78, height: 25)
+        touchIdBtn.bezelStyle = .rounded
+        if #available(macOS 11.0, *) {
+            let img = NSImage(systemSymbolName: "touchid", accessibilityDescription: "Touch ID")
+            if img != nil {
+                touchIdBtn.image = img
+                touchIdBtn.imagePosition = .imageLeading
+            }
+        }
+        contentView.addSubview(touchIdBtn)
 
         // 5. 2Captcha API Key
         y -= 36
@@ -107,22 +130,29 @@ final class PreferencesWindowController: NSWindowController {
         }
         contentView.addSubview(intervalPopUp)
 
-        // 7. Notifications
-        y -= 32
+        // 7. Apple Keychain Save Checkbox
+        y -= 30
+        keychainCheckBox = NSButton(checkboxWithTitle: "Save passwords securely to Apple Keychain", target: nil, action: nil)
+        keychainCheckBox.frame = NSRect(x: fieldX, y: y, width: 280, height: 20)
+        keychainCheckBox.state = .on
+        contentView.addSubview(keychainCheckBox)
+
+        // 8. Notifications
+        y -= 26
         notifyCheckBox = NSButton(checkboxWithTitle: "Send notification upon successful reload", target: nil, action: nil)
-        notifyCheckBox.frame = NSRect(x: fieldX, y: y, width: 260, height: 20)
+        notifyCheckBox.frame = NSRect(x: fieldX, y: y, width: 280, height: 20)
         contentView.addSubview(notifyCheckBox)
 
         // Bottom Save button
         y -= 45
-        let saveBtn = NSButton(title: "Save Changes", target: self, action: #selector(saveClicked))
-        saveBtn.frame = NSRect(x: fieldX + 130, y: y, width: 120, height: 28)
+        let saveBtn = NSButton(title: "Save & Check Now", target: self, action: #selector(saveClicked))
+        saveBtn.frame = NSRect(x: fieldX + 110, y: y, width: 155, height: 28)
         saveBtn.bezelStyle = .rounded
         saveBtn.keyEquivalent = "\r"
         contentView.addSubview(saveBtn)
 
         let cancelBtn = NSButton(title: "Cancel", target: self, action: #selector(cancelClicked))
-        cancelBtn.frame = NSRect(x: fieldX + 40, y: y, width: 80, height: 28)
+        cancelBtn.frame = NSRect(x: fieldX + 20, y: y, width: 80, height: 28)
         cancelBtn.bezelStyle = .rounded
         contentView.addSubview(cancelBtn)
     }
@@ -146,17 +176,63 @@ final class PreferencesWindowController: NSWindowController {
         customHostField.stringValue = config.customHost
         customHostField.isEnabled = (config.provider == .custom)
         usernameField.stringValue = config.username
-        passwordField.stringValue = config.password
-        captchaKeyField.stringValue = config.captchaApiKey
 
+        // Load password: from config or Keychain fallback
+        if !config.password.isEmpty {
+            passwordField.stringValue = config.password
+        } else if let kcPass = KeychainManager.shared.getPassword(service: config.effectiveBaseUrl, account: config.username) {
+            passwordField.stringValue = kcPass
+        }
+
+        captchaKeyField.stringValue = config.captchaApiKey
         intervalPopUp.selectItem(withTag: config.checkIntervalMinutes)
         notifyCheckBox.state = config.notificationsEnabled ? .on : .off
+        keychainCheckBox.state = .on
         balanceLabel.stringValue = ""
     }
 
     @objc private func providerChanged() {
         guard let p = providerPopUp.selectedItem?.representedObject as? Provider else { return }
         customHostField.isEnabled = (p == .custom)
+    }
+
+    @objc private func touchIdClicked() {
+        let username = usernameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let p = (providerPopUp.selectedItem?.representedObject as? Provider) ?? .sim24
+        let service = (p == .custom) ? customHostField.stringValue : p.defaultHost
+
+        Task {
+            let authenticated = await KeychainManager.shared.authenticateWithTouchID(
+                reason: "Access your stored credentials for \(p.displayName)"
+            )
+
+            guard authenticated else { return }
+
+            await MainActor.run {
+                // Check if we have password in Keychain
+                if let pass = KeychainManager.shared.getPassword(service: service, account: username) {
+                    self.passwordField.stringValue = pass
+                    Logger.log("[Preferences] Filled password from Apple Keychain via Touch ID.")
+                } else if let pass = KeychainManager.shared.getPassword(service: "https://service.sim24.de", account: username) {
+                    self.passwordField.stringValue = pass
+                    Logger.log("[Preferences] Filled password from Apple Keychain (SIM24 service) via Touch ID.")
+                } else {
+                    // Try finding any account stored
+                    let accounts = KeychainManager.shared.findStoredAccounts(service: service)
+                    if let first = accounts.first, let pass = KeychainManager.shared.getPassword(service: service, account: first) {
+                        self.usernameField.stringValue = first
+                        self.passwordField.stringValue = pass
+                        Logger.log("[Preferences] Auto-detected account '%@' from Apple Keychain via Touch ID.", first)
+                    } else {
+                        let alert = NSAlert()
+                        alert.messageText = "Touch ID Verified"
+                        alert.informativeText = "No saved credentials found in Keychain for \(username.isEmpty ? "this service" : username). Enter your password once and it will be saved."
+                        alert.alertStyle = .informational
+                        alert.runModal()
+                    }
+                }
+            }
+        }
     }
 
     @objc private func checkBalanceClicked() {
@@ -189,20 +265,39 @@ final class PreferencesWindowController: NSWindowController {
 
     @objc private func saveClicked() {
         let p = (providerPopUp.selectedItem?.representedObject as? Provider) ?? .sim24
-        let interval = intervalPopUp.selectedItem?.tag ?? 15
+        let interval = intervalPopUp.selectedItem?.tag ?? 5
+        let username = usernameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let password = passwordField.stringValue
+        let captchaKey = captchaKeyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let customHost = customHostField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveHost = (p == .custom) ? customHost : p.defaultHost
 
+        // 1. Save to Apple Keychain if enabled
+        if keychainCheckBox.state == .on && !username.isEmpty && !password.isEmpty {
+            KeychainManager.shared.savePassword(service: effectiveHost, account: username, password: password)
+            if !captchaKey.isEmpty {
+                KeychainManager.shared.savePassword(service: "2captcha.com", account: "api_key", password: captchaKey)
+            }
+            Logger.log("[Preferences] Credentials saved to Apple Keychain.")
+        }
+
+        // 2. Update AppConfig
         ConfigManager.shared.update(
             provider: p,
-            customHost: customHostField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
-            username: usernameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
-            password: passwordField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
-            captchaApiKey: captchaKeyField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines),
+            customHost: customHost,
+            username: username,
+            password: password,
+            captchaApiKey: captchaKey,
             checkIntervalMinutes: interval,
             notificationsEnabled: (notifyCheckBox.state == .on)
         )
 
-        Logger.log("[Preferences] Settings saved. Provider: %@, Interval: %ld min", p.displayName, interval)
+        Logger.log("[Preferences] Settings saved. Provider: %@, Interval: %ld min. Triggering immediate check...", p.displayName, interval)
+
         self.window?.close()
+
+        // 3. Post notification to immediately restart timer and trigger check
+        NotificationCenter.default.post(name: NSNotification.Name("TrafficReloaderSettingsSaved"), object: nil)
     }
 
     @objc private func cancelClicked() {
@@ -211,7 +306,7 @@ final class PreferencesWindowController: NSWindowController {
 
     private func createLabel(text: String, x: CGFloat, y: CGFloat) -> NSTextField {
         let label = NSTextField(labelWithString: text)
-        label.frame = NSRect(x: x, y: y, width: 140, height: 18)
+        label.frame = NSRect(x: x, y: y, width: 135, height: 18)
         label.alignment = .right
         label.font = NSFont.systemFont(ofSize: 12.0)
         return label
