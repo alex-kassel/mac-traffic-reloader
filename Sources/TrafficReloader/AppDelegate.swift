@@ -142,10 +142,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarControllerDeleg
 
     func engineDidStartCycle() {
         menuBarController.updateStatusIcon(isReloading: true)
+        StatisticsWindowController.shared.refreshUI()
     }
 
     func engineDidFinishCycle(status: ServiceweltStatus) {
         menuBarController.refreshMenuStates()
+        StatisticsWindowController.shared.refreshUI()
     }
 
     // MARK: - Standard Edit Menu for Cut/Copy/Paste/SelectAll in Accessory Apps

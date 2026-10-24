@@ -31,6 +31,8 @@ final class ReloaderEngine {
 
         Task {
             let baseUrl = config.effectiveBaseUrl
+            // Start scan with an empty line delimiter and prominent header
+            Logger.startScan(url: baseUrl, isManual: isManual)
             let status = await client.executeReload(baseUrl: baseUrl, config: config)
 
             await MainActor.run {
@@ -90,6 +92,7 @@ final class ReloaderEngine {
             )
         }
 
-        Logger.log("[ReloaderEngine] Cycle finished: %@", statusStr)
+        // Output cycle summary and end scan banner
+        Logger.endScan(status: statusStr)
     }
 }

@@ -40,6 +40,27 @@ final class Logger {
         shared.write(formatted)
     }
 
+    static func writeRaw(_ rawText: String) {
+        shared.queue.async {
+            shared.rotateIfNeeded()
+            guard let handle = shared.fileHandle, let data = rawText.data(using: .utf8) else { return }
+            handle.write(data)
+        }
+    }
+
+    /// Outputs an empty line preceding every new scan and prints a prominent scan start banner
+    static func startScan(url: String, isManual: Bool = false) {
+        writeRaw("\n")
+        let trigger = isManual ? "Manual Request" : "Scheduled Timer"
+        log("==================== [START SCAN: %@ (%@)] ====================", url, trigger)
+    }
+
+    /// Prints a prominent scan finish banner
+    static func endScan(status: String) {
+        log("[ReloaderEngine] Cycle finished: %@", status)
+        log("==================== [END SCAN] ====================")
+    }
+
     private func write(_ message: String) {
         let timestamp = dateFormatter.string(from: Date())
         let line = "[\(timestamp)] \(message)\n"
