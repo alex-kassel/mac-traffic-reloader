@@ -3,13 +3,18 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarControllerDelegate, ReloaderEngineDelegate {
     private var menuBarController: MenuBarController!
-    private var timer: Timer?
+    private var dispatchTimer: DispatchSourceTimer?
+    private var appActivity: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Run as background menu bar accessory (no Dock, no Cmd+Tab)
         NSApp.setActivationPolicy(.accessory)
 
-        // Prevent macOS from terminating background network app
+        // Prevent macOS App Nap and background throttling
+        appActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical],
+            reason: "Traffic Reloader background scheduler"
+        )
         ProcessInfo.processInfo.disableAutomaticTermination("Traffic Reloader background scheduler")
 
         Logger.log("[AppDelegate] Starting Traffic Reloader...")
@@ -55,22 +60,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarControllerDeleg
 
     func applicationWillTerminate(_ notification: Notification) {
         Logger.log("[AppDelegate] Application terminating...")
-        timer?.invalidate()
-        timer = nil
+        dispatchTimer?.cancel()
+        dispatchTimer = nil
+        if let act = appActivity {
+            ProcessInfo.processInfo.endActivity(act)
+            appActivity = nil
+        }
     }
 
     private func restartTimer() {
-        timer?.invalidate()
-        timer = nil
+        dispatchTimer?.cancel()
+        dispatchTimer = nil
 
         let intervalMinutes = ConfigManager.shared.config.checkIntervalMinutes
-        let intervalSeconds = TimeInterval(max(1, intervalMinutes) * 60)
+        let intervalSeconds = max(1, intervalMinutes) * 60
 
-        Logger.log("[AppDelegate] Scheduling recurring timer every %ld minutes (%.0f s)...", intervalMinutes, intervalSeconds)
+        Logger.log("[AppDelegate] Scheduling high-precision DispatchSourceTimer every %ld minutes (%d s)...", intervalMinutes, intervalSeconds)
 
-        timer = Timer.scheduledTimer(withTimeInterval: intervalSeconds, repeats: true) { [weak self] _ in
-            self?.timerFired()
+        let queue = DispatchQueue(label: "com.fcc.trafficreloader.timer", qos: .userInitiated)
+        let timer = DispatchSource.makeTimerSource(flags: .strict, queue: queue)
+        timer.schedule(
+            deadline: .now() + .seconds(intervalSeconds),
+            repeating: .seconds(intervalSeconds),
+            leeway: .milliseconds(500)
+        )
+
+        timer.setEventHandler { [weak self] in
+            DispatchQueue.main.async {
+                self?.timerFired()
+            }
         }
+
+        timer.resume()
+        self.dispatchTimer = timer
     }
 
     private func timerFired() {

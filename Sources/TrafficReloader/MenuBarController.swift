@@ -159,11 +159,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             quotaMenuItem.title = "Quota: Not synced yet"
         }
 
-        // Last Check Time
+        // Last Check Time & Next Check
         if let date = config.lastCheckDate {
             let formatter = DateFormatter()
             formatter.dateFormat = "HH:mm:ss"
-            lastCheckMenuItem.title = "Last Check: \(formatter.string(from: date))"
+            let elapsed = Int(Date().timeIntervalSince(date))
+            let total = config.checkIntervalMinutes * 60
+            let remaining = max(0, total - elapsed)
+            let remMin = remaining / 60
+            let remSec = remaining % 60
+            lastCheckMenuItem.title = String(format: "Last Check: %@ (Next in %02d:%02d)", formatter.string(from: date), remMin, remSec)
         } else {
             lastCheckMenuItem.title = "Last Check: Never"
         }
@@ -234,7 +239,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func openLogFile() {
         let logUrl = URL(fileURLWithPath: Logger.shared.logPath)
-        NSWorkspace.shared.activateFileViewerSelecting([logUrl])
+        NSWorkspace.shared.open(logUrl)
     }
 
     @objc private func quitApp() {
